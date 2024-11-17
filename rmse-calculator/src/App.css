@@ -1,0 +1,244 @@
+/* General styles */
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f9f9f9; /* Light background color */
+}
+
+.App {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+h1 {
+  color: #333;
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+/* File input container */
+.file-input-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.file-input-container label {
+  display: inline-block;
+  background-color: #007bff;
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-right: 10px;
+  font-weight: bold;
+  transition: background-color 0.3s;
+}
+
+.file-input-container label:hover {
+  background-color: #0056b3;
+}
+
+.file-input-container input[type="file"] {
+  display: none;
+}
+
+.file-name {
+  font-size: 16px;
+  color: #555;
+}
+
+/* Buttons */
+button {
+  background-color: #28a745;
+  color: #fff;
+  padding: 12px 25px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  margin: 10px 5px;
+  transition: background-color 0.3s;
+}
+
+button:hover {
+  background-color: #218838;
+}
+
+button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+/* RMSE display */
+.rmse-display {
+  text-align: center;
+  margin-top: 30px;
+  font-size: 18px;
+  color: #333;
+}
+
+/* Map container */
+.map-container {
+  margin-top: 30px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  overflow: hidden;
+  height: 500px;
+}
+
+/* Table styling */
+.file-grid {
+  margin-top: 40px;
+}
+
+.file-grid h2 {
+  text-align: center;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.file-grid table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.file-grid th,
+.file-grid td {
+  padding: 12px 15px;
+  border: 1px solid #ddd;
+  text-align: center;
+}
+
+.file-grid th {
+  background-color: #f2f2f2;
+  color: #333;
+  font-weight: bold;
+}
+
+.file-grid td {
+  background-color: #fff;
+  color: #555;
+}
+
+.file-grid button {
+  background-color: #007bff;
+  margin: 0 5px;
+}
+
+.file-grid button:hover {
+  background-color: #0056b3;
+}
+
+/* Modal styling (updated earlier) */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-content {
+  background-color: #fff;
+  padding: 20px;
+  max-height: 80%;
+  overflow-y: auto;
+  width: 80%;
+  border-radius: 8px;
+  position: relative;
+}
+
+.close {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.close:hover {
+  color: red;
+}
+
+/* Modal table */
+.modal-content table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.modal-content th,
+.modal-content td {
+  padding: 10px;
+  border: 1px solid #ddd;
+  text-align: center;
+}
+
+.modal-content th {
+  background-color: #f4f4f4;
+  color: #333;
+  font-weight: bold;
+}
+
+.modal-content td {
+  background-color: #fff;
+  color: #555;
+}
+
+/* Error message */
+.error-message {
+  color: red;
+  font-weight: bold;
+  margin-top: 20px;
+  text-align: center;
+}
+.legend {
+  margin-top: 10px;
+  background: white;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  display: inline-block;
+  width: 200px;
+  margin-left: 10px;
+}
+
+.legend h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  margin-top: 5px;
+}
+
+.legend-color {
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
+}
+
+.legend-color.red {
+  background-color: red;
+}
+
+.legend-color.green {
+  background-color: green;
+}
+
+.map-container {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}

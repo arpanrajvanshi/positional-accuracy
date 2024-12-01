@@ -1,3 +1,5 @@
+// server.js
+
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -5,14 +7,16 @@ const XLSX = require('xlsx');
 const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
-const { createObjectCsvWriter } = require('csv-writer'); // Import csv-writer
+const { createObjectCsvWriter } = require('csv-writer');
+const math = require('mathjs'); // Used for statistical calculations
+
 const app = express();
 
 // PostgreSQL setup
 const client = new Client({
   user: 'postgres',
   host: 'localhost',
-  database: 'accuracy1_db', 
+  database: 'abs_accuracy_outlier',
   password: '6398', // Replace with your actual database password
   port: 5432,
 });
@@ -44,44 +48,10 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
     Math.cos(φ1) * Math.cos(φ2) *
     Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const c = 2 * Math.asin(Math.sqrt(a));
 
   const distance = R * c; // Distance in meters
   return distance;
-};
-
-// Calculate Mean Positional Uncertainty
-const calculateMeanPositionalUncertainty = (errors) => {
-  const sumOfErrors = errors.reduce((acc, error) => acc + error, 0);
-  return sumOfErrors / errors.length;
-};
-
-// Calculate standard deviation
-const calculateStandardDeviation = (errors, mean) => {
-  const squaredDiffs = errors.map((error) => Math.pow(error - mean, 2));
-  const variance = squaredDiffs.reduce((sum, value) => sum + value, 0) / (errors.length - 1);
-  return Math.sqrt(variance);
-};
-
-// Determine k value based on the ratio of mean to standard deviation
-const determineK = (ratio) => {
-  if (ratio > 1.4) {
-    return 1.2815;
-  } else {
-    return 1.6435 - (0.999556 * ratio) + (0.923237 * Math.pow(ratio, 2)) - (0.282533 * Math.pow(ratio, 3));
-  }
-};
-
-// Calculate CE90
-const calculateCE90 = (mean, standardDeviation) => {
-  const ratio = Math.abs(mean) / standardDeviation;
-  const k = determineK(ratio);
-  return Math.abs(mean) + (k * standardDeviation);
-};
-
-// Calculate Absolute CE90
-const calculateAbsoluteCE90 = (ce90Source, ce90Reference) => {
-  return Math.sqrt(Math.pow(ce90Reference, 2) + Math.pow(ce90Source, 2));
 };
 
 // API to upload Excel files and calculate Mean Positional Uncertainty and CE90
@@ -116,11 +86,14 @@ app.post('/upload', upload.array('files', 2), async (req, res) => {
 
       if (!isNaN(lat1) && !isNaN(lon1) && !isNaN(lat2) && !isNaN(lon2)) {
         const distance = calculateDistance(lat1, lon1, lat2, lon2);
+
         distances.push(distance);
+
         dataToSave.push({ lat1, lon1, lat2, lon2, distance });
       }
     }
 
+    // Remove uploaded files after processing
     fs.unlinkSync(file1Path);
     fs.unlinkSync(file2Path);
 
@@ -128,21 +101,77 @@ app.post('/upload', upload.array('files', 2), async (req, res) => {
       return res.status(400).json({ error: 'No valid data found in the uploaded files.' });
     }
 
-    const meanPositionalUncertainty = calculateMeanPositionalUncertainty(distances);
-    const standardDeviation = calculateStandardDeviation(distances, meanPositionalUncertainty);
-    const ratio = Math.abs(meanPositionalUncertainty) / standardDeviation;
-    const ce90 = calculateCE90(meanPositionalUncertainty, standardDeviation);
-    const ce90Reference = 0.001; // Placeholder value, replace with actual if available
-    const ce90Abs = calculateAbsoluteCE90(ce90, ce90Reference);
+    // Calculate Q1, Q3, and IQR for outlier detection
+    const sortedDistances = distances.slice().sort((a, b) => a - b);
+    const Q1 = math.quantileSeq(sortedDistances, 0.25);
+    const Q3 = math.quantileSeq(sortedDistances, 0.75);
+    const IQR = Q3 - Q1;
+    const lowerBound = Q1 - 1.5 * IQR;
+    const upperBound = Q3 + 1.5 * IQR;
+
+    // Identify outliers and add isOutlier flag
+    for (let i = 0; i < distances.length; i++) {
+      const distance = distances[i];
+      const isOutlier = distance < lowerBound || distance > upperBound;
+      dataToSave[i].isOutlier = isOutlier;
+    }
+
+    // Calculate mean and standard deviation of distances including all points
+    const meanDistance = distances.reduce((sum, d) => sum + d, 0) / distances.length;
+    const varianceDistance = distances.reduce((sum, d) => sum + Math.pow(d - meanDistance, 2), 0) / distances.length-1;
+    const stdDevDistance = Math.sqrt(varianceDistance);
+    
+   //ce90 with the outliers
+    const ratioIncludingOutliers=meanDistance/stdDevDistance;
+    let k=0;
+    if(ratioIncludingOutliers>1.4){
+      k=1.2815;
+    }
+    else{
+      k=1.6435 -(0.999556*ratioIncludingOutliers)+(0.923237*ratioIncludingOutliers*ratioIncludingOutliers)-(0.282533*ratioIncludingOutliers*ratioIncludingOutliers*ratioIncludingOutliers);
+    }
+    // Calculate CE90 including all points
+    const ce90 = math.abs(meanDistance)+k*stdDevDistance;
+
+    // Calculate mean and standard deviation of distances excluding outliers
+    const nonOutlierDistances = dataToSave
+      .filter(point => !point.isOutlier)
+      .map(point => point.distance);
+
+    const meanDistanceNoOutliers = nonOutlierDistances.reduce((sum, d) => sum + d, 0) / nonOutlierDistances.length;
+    const varianceDistanceNoOutliers = nonOutlierDistances.reduce((sum, d) => sum + Math.pow(d - meanDistanceNoOutliers, 2), 0) / nonOutlierDistances.length-1;
+    const stdDevDistanceNoOutliers = Math.sqrt(varianceDistanceNoOutliers);
+
+    // Calculate CE90 excluding outliers
+    const ratioExcludingOutliers=meanDistanceNoOutliers/stdDevDistanceNoOutliers;
+    let k1=0;
+    if(ratioExcludingOutliers>1.4){
+      k1=1.2815;
+    }
+    else{
+      k1=1.6435 -(0.999556*ratioExcludingOutliers)+(0.923237*ratioExcludingOutliers*ratioExcludingOutliers)-(0.282533*ratioExcludingOutliers*ratioExcludingOutliers*ratioExcludingOutliers);
+    }
+
+    const ce90NoOutliers = math.abs(meanDistanceNoOutliers)+(k1*stdDevDistanceNoOutliers);
+
+    // Prepare metrics
+    const allMetrics = {
+      mean: meanDistance,
+      stdDev: stdDevDistance,
+      ce90: ce90,
+    };
+
+    const nonOutlierMetrics = {
+      mean: meanDistanceNoOutliers,
+      stdDev: stdDevDistanceNoOutliers,
+      ce90: ce90NoOutliers,
+    };
 
     const createdAt = new Date().toISOString();
 
     res.json({
-      meanPositionalUncertainty,
-      standardDeviation,
-      ratio,
-      ce90,
-      ce90Abs,
+      allMetrics,
+      nonOutlierMetrics,
       points: dataToSave,
       createdAt,
     });
@@ -158,33 +187,45 @@ app.post('/save', async (req, res) => {
     file1Name,
     file2Name,
     createdAt,
-    meanPositionalUncertainty,
-    standardDeviation,
-    ce90,
+    allMetrics,
+    nonOutlierMetrics,
     points,
   } = req.body;
 
   try {
     // Insert into entries table
     const insertEntryQuery = `
-      INSERT INTO entries (file1_name, file2_name, created_at, mean_positional_uncertainty, standard_deviation, ce90)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO entries (
+        file1_name,
+        file2_name,
+        created_at,
+        mean_positional_uncertainty,
+        standard_deviation,
+        ce90,
+        mean_positional_uncertainty_no_outliers,
+        standard_deviation_no_outliers,
+        ce90_no_outliers
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING id
     `;
     const entryResult = await client.query(insertEntryQuery, [
       file1Name,
       file2Name,
       createdAt,
-      meanPositionalUncertainty,
-      standardDeviation,
-      ce90,
+      allMetrics.mean,
+      allMetrics.stdDev,
+      allMetrics.ce90,
+      nonOutlierMetrics.mean,
+      nonOutlierMetrics.stdDev,
+      nonOutlierMetrics.ce90,
     ]);
     const entryId = entryResult.rows[0].id;
 
     // Insert points into points table
     const insertPointQuery = `
-      INSERT INTO points (entry_id, lat1, lon1, lat2, lon2, distance, index)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO points (entry_id, lat1, lon1, lat2, lon2, distance, is_outlier, index)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `;
 
     for (let i = 0; i < points.length; i++) {
@@ -196,6 +237,7 @@ app.post('/save', async (req, res) => {
         point.lat2,
         point.lon2,
         point.distance,
+        point.isOutlier,
         i + 1, // index
       ]);
     }
@@ -256,7 +298,6 @@ app.get('/getPoints/:entryId', async (req, res) => {
 });
 
 // Fetch stored data and generate a CSV file for download
-// Fetch stored data and generate a CSV file for download
 app.get('/download', async (req, res) => {
   try {
     const query = `
@@ -276,6 +317,7 @@ app.get('/download', async (req, res) => {
         { id: 'lat2', title: 'Reference Latitude' },
         { id: 'lon2', title: 'Reference Longitude' },
         { id: 'distance', title: 'Distance (m)' },
+        { id: 'is_outlier', title: 'Is Outlier' },
         { id: 'index', title: 'Point Index' },
       ],
     });

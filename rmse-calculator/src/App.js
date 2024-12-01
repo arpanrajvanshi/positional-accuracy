@@ -1,3 +1,5 @@
+// App.js
+
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import MapComponent from './MapComponent';
@@ -16,6 +18,9 @@ function App() {
   const [modalData, setModalData] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+
+  const [excludeOutliers, setExcludeOutliers] = useState(false);
+  const [metrics, setMetrics] = useState({});
 
   const uploadFiles = async () => {
     if (!file1 || !file2) {
@@ -41,11 +46,23 @@ function App() {
       }
 
       const createdAtDate = new Date(response.data.createdAt);
-      setMeanPositionalUncertainty(response.data.meanPositionalUncertainty);
-      setStandardDeviation(response.data.standardDeviation);
-      setCe90(response.data.ce90);
       setPoints(response.data.points);
       setCreatedAt(createdAtDate);
+
+      // Set metrics (initially with all points)
+      setMetrics({
+        meanPositionalUncertainty: response.data.allMetrics.mean,
+        standardDeviation: response.data.allMetrics.stdDev,
+        ce90: response.data.allMetrics.ce90,
+        meanPositionalUncertaintyNoOutliers: response.data.nonOutlierMetrics.mean,
+        standardDeviationNoOutliers: response.data.nonOutlierMetrics.stdDev,
+        ce90NoOutliers: response.data.nonOutlierMetrics.ce90,
+      });
+
+      // Initially set metrics including all points
+      setMeanPositionalUncertainty(response.data.allMetrics.mean);
+      setStandardDeviation(response.data.allMetrics.stdDev);
+      setCe90(response.data.allMetrics.ce90);
     } catch (error) {
       console.error('Error uploading files:', error);
       alert('Error uploading files. Please check the server.');
@@ -77,9 +94,13 @@ function App() {
 
       setModalData({
         points,
-        meanPositionalUncertainty: entry.mean_positional_uncertainty,
-        standardDeviation: entry.standard_deviation,
-        ce90: entry.ce90,
+        meanPositionalUncertainty: excludeOutliers
+          ? entry.mean_positional_uncertainty_no_outliers
+          : entry.mean_positional_uncertainty,
+        standardDeviation: excludeOutliers
+          ? entry.standard_deviation_no_outliers
+          : entry.standard_deviation,
+        ce90: excludeOutliers ? entry.ce90_no_outliers : entry.ce90,
         createdAt: new Date(entry.created_at),
         file1Name: entry.file1_name,
         file2Name: entry.file2_name,
@@ -98,9 +119,16 @@ function App() {
         file1Name: file1.name,
         file2Name: file2.name,
         createdAt,
-        meanPositionalUncertainty,
-        standardDeviation,
-        ce90,
+        allMetrics: {
+          mean: metrics.meanPositionalUncertainty,
+          stdDev: metrics.standardDeviation,
+          ce90: metrics.ce90,
+        },
+        nonOutlierMetrics: {
+          mean: metrics.meanPositionalUncertaintyNoOutliers,
+          stdDev: metrics.standardDeviationNoOutliers,
+          ce90: metrics.ce90NoOutliers,
+        },
         points,
       });
 
@@ -134,76 +162,136 @@ function App() {
     }
   };
 
+  // Function to calculate error parameters based on inclusion/exclusion of outliers
+  const calculateErrorParameters = () => {
+    if (excludeOutliers) {
+      setMeanPositionalUncertainty(metrics.meanPositionalUncertaintyNoOutliers);
+      setStandardDeviation(metrics.standardDeviationNoOutliers);
+      setCe90(metrics.ce90NoOutliers);
+    } else {
+      setMeanPositionalUncertainty(metrics.meanPositionalUncertainty);
+      setStandardDeviation(metrics.standardDeviation);
+      setCe90(metrics.ce90);
+    }
+  };
+
+  // Update metrics when excludeOutliers changes
+  useEffect(() => {
+    calculateErrorParameters();
+  }, [excludeOutliers]);
+
   // Parse and validate points to ensure they are correctly formatted as numbers
   const measuredPoints = points
-    .map((point) => [parseFloat(point.lat1), parseFloat(point.lon1)])
-    .filter(([lat, lon]) => !isNaN(lat) && !isNaN(lon));
+    .map((point) => ({
+      position: [parseFloat(point.lat1), parseFloat(point.lon1)],
+      isOutlier: point.is_outlier,
+    }))
+    .filter((point) => !isNaN(point.position[0]) && !isNaN(point.position[1]));
 
-  const referencePoints = points
-    .map((point) => [parseFloat(point.lat2), parseFloat(point.lon2)])
-    .filter(([lat, lon]) => !isNaN(lat) && !isNaN(lon));
+    const referencePoints = points
+    .map((point) => ({
+      position: [parseFloat(point.lat2), parseFloat(point.lon2)],
+      isOutlier: point.is_outlier,
+    }))
+    .filter((point) => !isNaN(point.position[0]) && !isNaN(point.position[1]));
 
   return (
     <div className="App">
       <h1>Absolute Positional Accuracy Measurement Tool</h1>
 
-      {/* File input for Measured Points */}
-      <div className="file-input-container">
-        <label htmlFor="file1">Choose Measured Points File</label>
-        <input
-          id="file1"
-          type="file"
-          onChange={(e) => setFile1(e.target.files[0])}
-        />
-        <span className="file-name">{file1 ? file1.name : 'No file chosen'}</span>
-      </div>
+      <div className="main-content">
+        <div className="left-panel">
+          {/* File input for Measured Points */}
+          <div className="file-input-container">
+            <label htmlFor="file1">Measured Points File:</label>
+            <input
+              id="file1"
+              type="file"
+              onChange={(e) => setFile1(e.target.files[0])}
+            />
+            <span className="file-name">{file1 ? file1.name : 'No file chosen'}</span>
+          </div>
 
-      {/* File input for Reference Points */}
-      <div className="file-input-container">
-        <label htmlFor="file2">Choose Reference Points File</label>
-        <input
-          id="file2"
-          type="file"
-          onChange={(e) => setFile2(e.target.files[0])}
-        />
-        <span className="file-name">{file2 ? file2.name : 'No file chosen'}</span>
-      </div>
+          {/* File input for Reference Points */}
+          <div className="file-input-container">
+            <label htmlFor="file2">Reference Points File:</label>
+            <input
+              id="file2"
+              type="file"
+              onChange={(e) => setFile2(e.target.files[0])}
+            />
+            <span className="file-name">{file2 ? file2.name : 'No file chosen'}</span>
+          </div>
 
-      <button onClick={uploadFiles}>Calculate Mean Positional Uncertainty and CE90</button>
+          <button className="upload-button" onClick={uploadFiles}>
+            Upload Files
+          </button>
 
-      {/* Display the mean positional uncertainty, standard deviation, CE90, and ratio */}
-      {meanPositionalUncertainty !== null && (
-        <div className="metrics-display">
-          <p>Mean Positional Uncertainty: {meanPositionalUncertainty.toFixed(6)} m</p>
-          <p>Standard Deviation: {standardDeviation.toFixed(6)} m</p>
-          <p>CE90: {ce90.toFixed(6)} m</p>
-          <p>
-            Ratio of Mean Positional Uncertainty to Standard Deviation:{' '}
-            {(meanPositionalUncertainty / standardDeviation).toFixed(6)}
-          </p>
-        </div>
-      )}
-
-      {points.length > 0 && (
-        <div className="map-container">
-          <MapComponent
-            measuredPoints={measuredPoints}
-            referencePoints={referencePoints}
-          />
-          <div className="legend">
-            <h3>Legend</h3>
-            <div className="legend-item">
-              <span className="legend-color red"></span>
-              <span>Measured Points (Red Markers)</span>
+          {/* Buttons to exclude outliers */}
+          {points.length > 0 && (
+            <div className="button-group">
+              <button onClick={() => setExcludeOutliers(!excludeOutliers)}>
+                {excludeOutliers ? 'Include Outliers' : 'Exclude Outliers'}
+              </button>
             </div>
-            <div className="legend-item">
-              <span className="legend-color green"></span>
-              <span>Reference Points (Green Markers)</span>
+          )}
+
+          {/* Display the mean positional uncertainty, standard deviation, CE90, and ratio */}
+          {meanPositionalUncertainty != null && standardDeviation != null && ce90 != null && (
+            <div className="metrics-display">
+              <h3>Results:</h3>
+              <p>
+                Mean Positional Uncertainty: {meanPositionalUncertainty?.toFixed(6) ?? 'N/A'} m
+              </p>
+              <p>
+                Standard Deviation: {standardDeviation?.toFixed(6) ?? 'N/A'} m
+              </p>
+              <p>CE90: {ce90?.toFixed(6) ?? 'N/A'} m</p>
+              <p>
+                Ratio of Mean Positional Uncertainty to Standard Deviation:{' '}
+                {standardDeviation !== 0 && standardDeviation != null
+                  ? (meanPositionalUncertainty / standardDeviation).toFixed(6)
+                  : 'N/A'}
+              </p>
+              <button className="save-button" onClick={saveData}>
+                Save Results
+              </button>
+            </div>
+          )}
+        </div>
+
+        {points.length > 0 && (
+          <div className="right-panel">
+            <div className="map-container">
+              <MapComponent
+                measuredPoints={measuredPoints}
+                referencePoints={referencePoints}
+                ce90={ce90}
+                excludeOutliers={excludeOutliers}
+              />
+              <div className="legend">
+                <h3>Legend</h3>
+                <div className="legend-item">
+                  <span className="legend-color red"></span>
+                  <span>Measured Points</span>
+                </div>
+                <div className="legend-item">
+                  <span className="legend-color green"></span>
+                  <span>Reference Points</span>
+                </div>
+                <div className="legend-item">
+                  <span className="legend-color black"></span>
+                  <span>Outlier Points</span>
+                </div>
+                <div className="legend-item">
+                  <span className="legend-color blue-circle"></span>
+                  <span>CE90 Circle</span>
+                </div>
+              </div>
             </div>
           </div>
-          <button onClick={saveData}>Save</button>
-        </div>
-      )}
+        )}
+      </div>
 
       <h2>Uploaded Entries</h2>
       {entries.length > 0 ? (
@@ -274,15 +362,28 @@ function App() {
             <p>Reference Points File: {modalData.file2Name}</p>
             <p>Created At: {new Date(modalData.createdAt).toLocaleString()}</p>
             <p>
-              Mean Positional Uncertainty: {modalData.meanPositionalUncertainty.toFixed(6)} m
+              Mean Positional Uncertainty:{' '}
+              {modalData.meanPositionalUncertainty != null
+                ? modalData.meanPositionalUncertainty.toFixed(6)
+                : 'N/A'}{' '}
+              m
             </p>
-            <p>Standard Deviation: {modalData.standardDeviation.toFixed(6)} m</p>
-            <p>CE90: {modalData.ce90.toFixed(6)} m</p>
+            <p>
+              Standard Deviation:{' '}
+              {modalData.standardDeviation != null
+                ? modalData.standardDeviation.toFixed(6)
+                : 'N/A'}{' '}
+              m
+            </p>
+            <p>
+              CE90:{' '}
+              {modalData.ce90 != null ? modalData.ce90.toFixed(6) : 'N/A'} m
+            </p>
             <p>
               Ratio of Mean Positional Uncertainty to Standard Deviation:{' '}
-              {(
-                modalData.meanPositionalUncertainty / modalData.standardDeviation
-              ).toFixed(6)}
+              {modalData.standardDeviation && modalData.standardDeviation !== 0
+                ? (modalData.meanPositionalUncertainty / modalData.standardDeviation).toFixed(6)
+                : 'N/A'}
             </p>
             <table>
               <thead>
@@ -295,15 +396,21 @@ function App() {
                 </tr>
               </thead>
               <tbody>
-                {modalData.points.map((row, index) => (
-                  <tr key={index}>
-                    <td>{row.lat1}</td>
-                    <td>{row.lon1}</td>
-                    <td>{row.lat2}</td>
-                    <td>{row.lon2}</td>
-                    <td>{row.distance.toFixed(6)}</td>
-                  </tr>
-                ))}
+                {modalData.points &&
+                  modalData.points.map((row, index) => (
+                    <tr
+                      key={index}
+                      style={{
+                        backgroundColor: row.is_outlier ? 'yellow' : 'transparent',
+                      }}
+                    >
+                      <td>{row.lat1}</td>
+                      <td>{row.lon1}</td>
+                      <td>{row.lat2}</td>
+                      <td>{row.lon2}</td>
+                      <td>{row.distance?.toFixed(6) ?? 'N/A'}</td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>

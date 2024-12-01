@@ -1,9 +1,11 @@
+// MapComponent.js
+
 import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Tooltip, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// Create custom icons
+// Define custom icons
 const redIcon = new L.Icon({
   iconUrl: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
   iconSize: [32, 32],
@@ -14,13 +16,26 @@ const greenIcon = new L.Icon({
   iconSize: [32, 32],
 });
 
+const blackIcon = new L.Icon({
+  iconUrl: 'https://maps.google.com/mapfiles/ms/icons/black-dot.png',
+  iconSize: [32, 32],
+});
+
+const blueIcon = new L.Icon({
+  iconUrl: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+  iconSize: [32, 32],
+});
+
 // Component to fit bounds of markers on the map
 const FitBounds = ({ measuredPoints, referencePoints }) => {
   const map = useMap();
 
   useEffect(() => {
     if (measuredPoints.length > 0 || referencePoints.length > 0) {
-      const allPoints = [...measuredPoints, ...referencePoints];
+      const allPoints = [
+        ...measuredPoints.map((point) => point.position),
+        ...referencePoints.map((point) => point.position),
+      ];
       const bounds = L.latLngBounds(allPoints);
       map.fitBounds(bounds);
     }
@@ -29,41 +44,104 @@ const FitBounds = ({ measuredPoints, referencePoints }) => {
   return null;
 };
 
-const MapComponent = ({ measuredPoints, referencePoints }) => {
+const MapComponent = ({ measuredPoints, referencePoints, ce90, excludeOutliers }) => {
+  // Calculate mean position of measured points (excluding outliers if needed)
+  const includedMeasuredPoints = excludeOutliers
+    ? measuredPoints.filter((point) => !point.isOutlier)
+    : measuredPoints;
+
+  let meanPosition = [0, 0];
+  if (includedMeasuredPoints.length > 0) {
+    meanPosition = [
+      includedMeasuredPoints.reduce((sum, point) => sum + point.position[0], 0) /
+        includedMeasuredPoints.length,
+      includedMeasuredPoints.reduce((sum, point) => sum + point.position[1], 0) /
+        includedMeasuredPoints.length,
+    ];
+  }
+
   return (
-    <MapContainer
-      center={[0, 0]}
-      zoom={2}
-      style={{ height: '400px', width: '80%', margin: 'auto', marginTop: '20px' }}
-    >
-      <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; OpenStreetMap contributors'
-      />
-      <FitBounds measuredPoints={measuredPoints} referencePoints={referencePoints} />
-      {measuredPoints.map((position, index) => (
-        <Marker key={`measured-${index}`} position={position} icon={redIcon}>
-          <Tooltip>
-            Measured Point {index + 1}
-            <br />
-            Latitude: {position[0]}
-            <br />
-            Longitude: {position[1]}
-          </Tooltip>
-        </Marker>
-      ))}
-      {referencePoints.map((position, index) => (
-        <Marker key={`reference-${index}`} position={position} icon={greenIcon}>
-          <Tooltip>
-            Reference Point {index + 1}
-            <br />
-            Latitude: {position[0]}
-            <br />
-            Longitude: {position[1]}
-          </Tooltip>
-        </Marker>
-      ))}
-    </MapContainer>
+    <div className="map-wrapper">
+      <MapContainer
+        center={meanPosition}
+        zoom={13}
+        style={{ height: '400px', width: '100%', margin: 'auto', marginTop: '20px' }}
+      >
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; OpenStreetMap contributors'
+        />
+        <FitBounds measuredPoints={measuredPoints} referencePoints={referencePoints} />
+
+        {/* Measured Points */}
+        {measuredPoints.map((point, index) => (
+          <Marker
+            key={`measured-${index}`}
+            position={point.position}
+            icon={point.isOutlier ? blackIcon : redIcon}
+          >
+            <Tooltip>
+              Measured Point {index + 1}
+              <br />
+              Latitude: {point.position[0]}
+              <br />
+              Longitude: {point.position[1]}
+            </Tooltip>
+          </Marker>
+        ))}
+
+        {/* Reference Points */}
+        {referencePoints.map((point, index) => (
+          <Marker
+            key={`reference-${index}`}
+            position={point.position}
+            icon={measuredPoints[index].isOutlier ? blueIcon : greenIcon}
+          >
+            <Tooltip>
+              Reference Point {index + 1}
+              <br />
+              Latitude: {point.position[0]}
+              <br />
+              Longitude: {point.position[1]}
+            </Tooltip>
+          </Marker>
+        ))}
+
+        {/* CE90 Circle */}
+        {ce90 && includedMeasuredPoints.length > 0 && (
+          <Circle
+            center={meanPosition}
+            radius={ce90} // CE90 in meters
+            pathOptions={{ color: 'blue', fillOpacity: 0.1 }}
+          />
+        )}
+      </MapContainer>
+
+      {/* Legend */}
+      <div className="legend">
+        <h3>Legend</h3>
+        <div className="legend-item">
+          <span className="legend-color red"></span>
+          <span>Measured Points</span>
+        </div>
+        <div className="legend-item">
+          <span className="legend-color green"></span>
+          <span>Reference Points</span>
+        </div>
+        <div className="legend-item">
+          <span className="legend-color black"></span>
+          <span>Outlier Measured Points</span>
+        </div>
+        <div className="legend-item">
+          <span className="legend-color blue"></span>
+          <span>Outlier Reference Points</span>
+        </div>
+        <div className="legend-item">
+          <span className="legend-color blue-circle"></span>
+          <span>CE90 Circle</span>
+        </div>
+      </div>
+    </div>
   );
 };
 

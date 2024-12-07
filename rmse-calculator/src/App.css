@@ -81,7 +81,7 @@ h1 {
 
 .red { background: red; }
 .green { background: green; }
-.black { background: black; }
+/*.black { background: black; }*/
 .blue-circle {
   background: blue;
   border-radius: 50%;

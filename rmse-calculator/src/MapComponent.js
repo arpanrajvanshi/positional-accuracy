@@ -44,7 +44,7 @@ const FitBounds = ({ measuredPoints, referencePoints }) => {
   return null;
 };
 
-const MapComponent = ({ measuredPoints, referencePoints, ce90, excludeOutliers }) => {
+const MapComponent = ({ measuredPoints, referencePoints, ce90, ce90Center, excludeOutliers }) => {
   // Calculate mean position of measured points (excluding outliers if needed)
   const includedMeasuredPoints = excludeOutliers
     ? measuredPoints.filter((point) => !point.isOutlier)
@@ -63,7 +63,7 @@ const MapComponent = ({ measuredPoints, referencePoints, ce90, excludeOutliers }
   return (
     <div className="map-wrapper">
       <MapContainer
-        center={meanPosition}
+        center={ce90Center || meanPosition}
         zoom={13}
         style={{ height: '400px', width: '100%', margin: 'auto', marginTop: '20px' }}
       >
@@ -108,12 +108,16 @@ const MapComponent = ({ measuredPoints, referencePoints, ce90, excludeOutliers }
         ))}
 
         {/* CE90 Circle */}
-        {ce90 && includedMeasuredPoints.length > 0 && (
+        {ce90 && ce90Center && (
           <Circle
-            center={meanPosition}
+            center={ce90Center}
             radius={ce90} // CE90 in meters
             pathOptions={{ color: 'blue', fillOpacity: 0.1 }}
-          />
+          >
+            <Tooltip direction="top" offset={[0, -20]} opacity={1} permanent={false}>
+              CE90 Radius: {ce90.toFixed(2)} m
+            </Tooltip>
+          </Circle>
         )}
       </MapContainer>
 
@@ -128,18 +132,7 @@ const MapComponent = ({ measuredPoints, referencePoints, ce90, excludeOutliers }
           <span className="legend-color green"></span>
           <span>Reference Points</span>
         </div>
-        <div className="legend-item">
-          <span className="legend-color black"></span>
-          <span>Outlier Measured Points</span>
-        </div>
-        <div className="legend-item">
-          <span className="legend-color blue"></span>
-          <span>Outlier Reference Points</span>
-        </div>
-        <div className="legend-item">
-          <span className="legend-color blue-circle"></span>
-          <span>CE90 Circle</span>
-        </div>
+      
       </div>
     </div>
   );
